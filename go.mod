@@ -1,4 +1,4 @@
-module github.com/tobkle/fp
+module github.com/tobkle/cm
 
 go 1.18
 

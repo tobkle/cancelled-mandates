@@ -1,12 +1,76 @@
-# Failed-Payment-Requests Processing (FP)
+# Cancelled Mandates (CM)
 
-You have downloaded a file with failed payment requests from your payment provider. In those files you have all executed requests to customers to pay a transaction of a specific amount. These requests weren't successful. Now, you want to decide, whether you want to ignore, to warn or to suspend customers due to a number of unsuccessful payment requests. This programm helps you to get a list of customers and their payments who should get warned, and who should get suspended.
+## Input
 
-Additionally, you downloaded a csv file from Elevate System with file name: elevate-accounts-YYYY-MM-DD.csv
+Download Data as csv files:
+
+1. CRM Data:              "crm-accounts-YYYY-MM-DD.csv"
+2. Elevate Data           "elevate-accounts-YYYY-MM-DD.csv"
+3. Failed Mandates        "failed-mandates-YYYY-MM-DD.csv"
+4. Cancelled Mandates     "cancelled-mandates-YYYY-MM-DD.csv"
+
+## Target
+
+Get a CRM account number per failed or cancelled mandate.
+
+## Methods to find a CRM account number
+
+For each row in Failed and Cancelled Mandates "mandate_row", process sequence of methods until a CRM account number is found:
+
+1. Check field "mandate_row"."customers.metadata.accountNumber", if it contains a valid CRM account number: 
+   - yes: CRM account number is found, stop process.
+   - no: continue with next check
+
+2. Check field "mandate_row"."mandates.id", if we find a match in "elevate"."mandate_reference", if found, use the row's "elevate"."customer_account_number" to find its CRM account by matching "crm"."account_number".
+   - yes: CRM account number is found, stop process.
+   - no: continue with next check
+
+3. Check field "mandate_row"."customers.id", if we find a match in "crm"."C0 Go Cardless Customer ID", the "crm" account number is found.
+   - yes: CRM account number is found, stop process
+   - no: continue with next check
+
+4. Check concatenated field "mandate_row"."customers.given_name" & " " & "customer.family_name" against "crm"."C0 Name".
+   - yes: CRM account is found, stop process
+   - no: continue with next check
+
+## Data to be enriched:
+
+### Assign Team
+
+Extract "crm"."stage name" (e.g. ACTIVE, SOLD, ...) and assign the corresponding team depending on stage name:
+
+case "crm"."stage name":
+  when: "SOLD"          : team = 'Pre Installation'
+  when: "INSTALL"       : team = 'Pre Installation'
+  when: "PROVISIONING"  : team = 'Post Installation'
+  when: "INVOICING"     : team = 'Post Installation'
+  when: "ACTIVE"        : team = 'Post Installation'
+  when: "INACTIVE"      : team = 'No action - inactive'
+  when others           : team = 'Pre Installation'
+
+If "mandate_row"."details.description" contains the words: "(.*)at your request(.*)" assign "team" = "No action - at our request".
+
+### Additional Fields to add:
+
+- "crm"."account_number"
+- "crm"."stage_name"
+- "mandate_row".(concatenate("customers.given_name" + " " + "customers.family_name"))
+- "crm"."C 0 Name"
+- "crm"."premise_address"
+- "crm"."C 0 Email"
+- "crm"."C 0 ID"
+
+### Processing Logic
+
+if we have already an entry for that event "failed/cancelled" mandates from previous days, skip the record. If not...
+
+Create file 1: "mandates-to-process-by-pre-installation-team-YYYY-MM-DD.csv", if "team" = "Pre Installation"
+
+Create file 2: "mandates-to-process-by-post-installation-team-YYYY-MM-DD.csv", if "team" = "Post Installation"
 
 ## Download Executable
 
-Click on fp and download the executable
+Click on cm and download the executable
 Create a folder to host this executable (and all other files later)
 
 ## Solve Security Topic "Unverified Developer"
@@ -27,57 +91,55 @@ You can bypass the block in your Security & Privacy settings manually:
 Just run...
 
 ```bash
-./fp
+./cm
 ```
 
 This will use the default values:
 
 ```
 Parameter:      Default value:
-- db            = failed-payment-requests-database.sqlite3
-- accounts      = elevate-accounts-YYYY-MM-DD.csv          with today's accounts from Elevate System
-- crm           = crm-accounts-YYYY-MM-DD.csv              with today's/week's accounts from CRM System
-- from          = failed-payment-requests-YYYY-MM-DD.csv   with today's date: YYYY=year, MM=month, DD=day)
-- toSmall       = customers-to-suspend-small-YYYY-MM-DD.csv      with today's date: YYYY=year, MM=month, DD=day)
-- toLarge       = customers-to-suspend-large-YYYY-MM-DD.csv      with today's date: YYYY=year, MM=month, DD=day)
-- amount        = amount to differ between small and large amounts (default: 20 GBP)
-- warn          = customers-to-warn-YYYY-MM-DD.csv         with today's date: YYYY=year, MM=month, DD=day)
-- count-warn    = 3                                        warn customers with 3 payment requests
-- count-suspend = 4                                        suspend customers with 4 or more payment requests
+- db            = cancelled-mandates-database.sqlite3
+- elevate       = elevate-accounts-YYYY-MM-DD.csv                                   with today's accounts from Elevate System
+- crm           = crm-accounts-YYYY-MM-DD.csv                                       with today's/week's accounts from CRM System
+- cancelled     = cancelled-mandates-YYYY-MM-DD.csv                                 with today's date: YYYY=year, MM=month, DD=day)
+- failed        = failed-mandates-YYYY-MM-DD.csv                                    with today's date: YYYY=year, MM=month, DD=day)
+- toPre         = mandates-to-process-by-pre-installation-team-YYYY-MM-DD.csv       with today's date: YYYY=year, MM=month, DD=day)
+- toPost        = mandates-to-process-by-post-installation-team-YYYY-MM-DD.csv      with today's date: YYYY=year, MM=month, DD=day)
+- toCheck       = mandates-to-check-YYYY-MM-DD.csv                                  with today's date: YYYY=year, MM=month, DD=day)
 ```
 
 If you want to have more control, use the parameters and provide a value for a parameter such as the following example:
 
 ```bash
-./fp -db failed-payment-requests-database.sqlite3 -from failed-payment-requests-2022-05-28.csv -to customers-to-suspend-2022-05-28.csv -warn customers-to-warn-2022-05-28.csv -count-warn 3 -count-suspend 4
+./cm -db cancelled-mandates-database.sqlite3 -from cancelled-mandates-2022-05-28.csv -toPre mandates-to-process-by-pre-installation-team-2022-05-28.csv -toPost mandates-to-process-by-post-installation-team-2022-05-28.csv -toCheck mandates-to-check-2022-05-28.csv
 ```
 
 ## What it does
 
-![Process Flow](/documentation/fp-process.png)
+![Process Flow](/documentation/cm-process.png)
 
 The above program does the following:
 
 - it reads accounts records from a `-accounts` file-name.csv, which you download from your Elevate system
 - it reads crm accounts records from a `-crm` file-name.csv, which you download from your CRM system
-- it reads payment request records from a `-from` file-name.csv, which you download from your payment provider
-- if this parameter isn't provided, it opens the csv file: failed-payments-YYYY-MM-DD.csv
+- it reads cancelled mandates records from a `-from` file-name.csv, which you download from your payment provider
+- if this parameter isn't provided, it opens the csv file: cancelled-mandates-YYYY-MM-DD.csv
 - it writes those records to a local `-db` dbname.sqlite3 database, and...
-  - if the payment request id is already in the database, it skips that record, as it is already in the database, or...
-  - if the payment request is not in the database, it inserts the record into the database.
+  - if the cancelled-mandate event id is already in the database, it skips that record, as it is already in the database, or...
+  - if the cancelled-mandate event id is not in the database, it inserts the record into the database.
 - after inserting all provided new records...
 
-### Payment Warnings
+### Pre Processing Team
 
-- it checks the database for payments_id, which has `-count-warn` number of payment requests (default: 3)
-- if found, create a record in the table paymentsWarnings with
-  - payments_id as unique primary key
+- it checks the database for event ids 
+- if found, create a record in the table preProcessing or postProcessing with
+  - event_id as unique primary key
   - timestamp with today's date as secondary index
-  - customers_id, customers_given_name, customers_family_name, customers_metadata_leadID
-- create a csv-file customers-to-warn-YYYY-MM-DD.csv containing all customer payments which got a warning record today
+  - customers_id, customers_given_name, customers_family_name
+- create a csv-file mandates-to-process-by-pre-installation-team-YYYY-MM-DD.csv containing all mandates to be processed
 - enriching the the files with the account-numbers for the Elevate system for easier processing
 
-### Customers To Suspend
+### Post Processing Team
 
 - it checks the database for payments_id, which had `-count-suspend` number or more of payment requests (default: 4)
 - if found, create a record in the table paymentsSuspended
@@ -92,15 +154,15 @@ The above program does the following:
 - the found payments_id with more than the allowed number of payment requests are exported in a new `-to` customers-to-suspend-YYYY-MM-DD.csv file
 - if the customers-to-suspend-YYYY-MM-DD.csv file already exists, it will be overwritten with the new content
 
-![Process Flow](/documentation/fp-export.png)
+![Process Flow](/documentation/cm-export.png)
 
-## How to import customers-to-suspend-YYYY-MM-DD.csv into Excel
+## How to import mandates-to-process-by-pre-installation-team-YYYY-MM-DD.csv files into Excel
 
 1. Open a new empty Excel file
 2. In Excel choose menu "Data"
 3. Click on the Dropdown icon of the first menu item: Something like "Import Data from..." (Don't know the exact translation, as I'm using a German version)
 4. In the Popup-Menu choose: "From Text (Legacy)"
-5. In the File-open-Popup window choose the path and file of the ccustomers-to-suspend-YYYY-MM-DD.csv file
+5. In the File-open-Popup window choose the path and file of the mandates-to-process-by-pre-installation-team-YYYY-MM-DD.csv file
 6. Click on "Import Data" button
 7. In the Text-Conversion-Assistant Step 1 of 3, choose radio-button "With delimiters - such as Commas,..."
 8. Click "Next"
@@ -117,7 +179,7 @@ This is a Go program compiled in version 1.18. If you need to adjust the program
 
 ### Setup Go
 
-You need the Google Go language compiler installed on your machine in order to adjust and build an executable such as the above failed-payments.exe
+You need the Google Go language compiler installed on your machine in order to adjust and build an executable such as the above cm.exe
 
 The installation procedure depends on your operating system and chipset of your computer. [Go Installation](https://go.dev/doc/install)
 
@@ -130,10 +192,10 @@ The installation procedure depends on your operating system and chipset of your 
 Whether by using
 
 ```bash
-git clone https://github.com/tobkle/failed-payments
+git clone https://github.com/tobkle/cancelled-mandates
 ```
 
-or by downloading the zip archive from [this Github Archive](https://github.com/tobkle/failed-payments) and unzip on your computer.
+or by downloading the zip archive from [this Github Archive](https://github.com/tobkle/cancelled-mandates) and unzip on your computer.
 
 ### Adjust the code
 
@@ -240,6 +302,6 @@ Solution:
 - change directory where fp is located by command
 
 ```
-cd <path where fp is located >
+cd <path where cm is located >
 chmod 777 fp
 ```
