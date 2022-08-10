@@ -102,7 +102,8 @@ func createTableCRMAccounts(db *DB) {
 		crm_email             text,
 		crm_premise_address   text,
 		crm_stage_name        text,
-		crm_gocardless_id     text
+		crm_gocardless_id     text,
+		crm_zen_user_id       text
 	)`
 	prepareAndExecuteSQL("create table crmAccounts", SQLCreateCRMAccountsDB, db)
 }
@@ -309,8 +310,9 @@ func importCRMAccounts(db *DB, csvFileName string) {
 			crm_email,
 			crm_premise_address,
 			crm_stage_name,
-			crm_gocardless_id
-		) values(?, ?, ?, ?, ?, ?, ?)
+			crm_gocardless_id,
+			crm_zen_user_id
+		) values(?, ?, ?, ?, ?, ?, ?, ?)
 		`
 		commandSQL := prepareSQL("insert into crmAccounts", SQLInsertCRMAccountsDB, db)
 
@@ -334,9 +336,9 @@ func importCRMAccounts(db *DB, csvFileName string) {
 			crm_name	                  := record[6]
 			crm_email	                  := record[7]
 			crm_gocardless_id             := record[8]	
-			// C0_Go_CardLess_Customer_ID := record[8]	
 			crm_id	                      := record[9]
-			// Count                      := record[10]
+			crm_zen_user_id               := record[10]
+			// Count                      := record[11]
 
 			_, err = commandSQL.Exec(
 						crm_id,
@@ -345,7 +347,8 @@ func importCRMAccounts(db *DB, csvFileName string) {
 						crm_email,
 						crm_premise_address,
 						crm_stage_name,
-					    crm_gocardless_id       )
+					    crm_gocardless_id,
+						crm_zen_user_id       )
 			if err != nil {
 				if strings.Contains(fmt.Sprint(err), "UNIQUE constraint failed") {
 					// fmt.Println("SUCCESS: Skipped existing record with id:", customer_account_number)
@@ -517,7 +520,7 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 	var timestamp = time.Now().Format("2006-01-02")
 	tx, err := db.Begin()
 
-	headerText := "id,created_at,resource_type,action,details_origin,details_cause,details_description,details_scheme,details_reason_code,links_previous_customer_bank_account,links_new_customer_bank_account,links_parent_event,links_mandate,mandates_id,mandates_created_at,mandates_reference,mandates_status,mandates_scheme,mandates_next_possible_charge_date,mandates_payments_require_approval,mandates_links_customer_bank_account,mandates_links_creditor,customers_id,customers_given_name,customers_family_name,customers_company_name,customers_metadata_leadID,customers_metadata_link,customers_metadata_xero,mandates_metadata_xero,imported_at,customers_name,crm_account_number,crm_id,crm_name,crm_email,crm_premise_address,crm_stage_name,crm_customer_name,crm_gocardless_id,target_team\n"
+	headerText := "id,created_at,resource_type,action,details_origin,details_cause,details_description,details_scheme,details_reason_code,links_previous_customer_bank_account,links_new_customer_bank_account,links_parent_event,links_mandate,mandates_id,mandates_created_at,mandates_reference,mandates_status,mandates_scheme,mandates_next_possible_charge_date,mandates_payments_require_approval,mandates_links_customer_bank_account,mandates_links_creditor,customers_id,customers_given_name,customers_family_name,customers_company_name,customers_metadata_leadID,customers_metadata_link,customers_metadata_xero,mandates_metadata_xero,imported_at,customers_name,crm_account_number,crm_id,crm_name,crm_email,crm_premise_address,crm_stage_name,crm_customer_name,crm_gocardless_id,target_team,crm_zen_user_id\n"
 
 	SQLTodaysMandateEvents := fmt.Sprintf(`
 		SELECT DISTINCT
@@ -671,6 +674,7 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 			var crm_customer_name   string
 			var crm_gocardless_id   string
 			var target_team         string
+			var crm_zen_user_id     string
 			fmt.Println(id, customers_name)
 
 			var found = false
@@ -678,7 +682,7 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 			// Method 1: customers_metadata_leadID is a CRM account number?
 			if found == false {
 				if customers_metadata_leadID != "" {
-					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id
+					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id, crm_zen_user_id
 						FROM crmAccounts 
 						WHERE ( crm_id             = "%s"
 						  OR    crm_account_number = "%s"
@@ -686,7 +690,7 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 					row, err := db.Query(SQLGetCRMAccount)
 					if err == nil {
 						for row.Next() {
-							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id)
+							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id,&crm_zen_user_id)
 							if crm_id != "" || crm_account_number != "" {
 								found = true
 								break
@@ -705,7 +709,7 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 			// Method 2: mandates_id is valid CRM account number
 			if found == false {
 				if mandates_id != "" {
-					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id
+					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id, crm_zen_user_id
 						FROM elevateAccounts
 						INNER JOIN crmAccounts 
 						ON elevate_account_number = crm_account_number
@@ -713,7 +717,7 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 					row, err := db.Query(SQLGetCRMAccount)
 					if err == nil {
 						for row.Next() {
-							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id)
+							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id,&crm_zen_user_id)
 							if crm_id != "" || crm_account_number != "" {
 								found = true
 								break
@@ -732,13 +736,13 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 			// Match with Method 3: customers_id is valid CRM account number
 			if found == false {
 				if customers_id != "" {
-					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id
+					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id, crm_zen_user_id
 						FROM crmAccounts 
 						WHERE crm_gocardless_id = "%s"`, strings.TrimSpace(customers_id))
 					row, err := db.Query(SQLGetCRMAccount)
 					if err == nil {
 						for row.Next() {
-							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id)
+							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id,&crm_zen_user_id)
 							if crm_id != "" || crm_account_number != "" {
 								found = true
 								break
@@ -757,13 +761,13 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 			// Match with Method 4: customers_id is valid CRM account number
 			if found == false {
 				if customers_name != "" {
-					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id
+					SQLGetCRMAccount := fmt.Sprintf(`SELECT DISTINCT crm_account_number, crm_id, crm_name, crm_email, crm_premise_address, crm_stage_name, crm_gocardless_id, crm_zen_user_id
 						FROM crmAccounts 
 						WHERE crm_name = "%s"`, strings.TrimSpace(customers_name))
 					row, err := db.Query(SQLGetCRMAccount)
 					if err == nil {
 						for row.Next() {
-							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id)
+							row.Scan(&crm_account_number,&crm_id,&crm_name,&crm_email,&crm_premise_address,&crm_stage_name,&crm_gocardless_id,&crm_zen_user_id)
 							if crm_id != "" || crm_account_number != "" {
 								found = true
 								break
@@ -836,7 +840,8 @@ func processMandateEvents(db *DB, csvPreTeamTo string, csvPostTeamTo string, csv
 							"\"" + crm_stage_name + "\"," +
 							"\"" + crm_customer_name + "\"," +
 							"\"" + crm_gocardless_id + "\"," +
-							"\"" + target_team + "\"\n"
+							"\"" + target_team + "\"," +
+							"\"" + crm_zen_user_id  + "\"\n"
 
 				if target_team == "Pre-Installation" {
 					if _, err = targetFilePreTeam.WriteString(resultRow); err != nil {
