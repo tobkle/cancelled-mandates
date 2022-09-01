@@ -313,6 +313,14 @@ func importCRMAccounts(db *DB, csvFileName string) {
 			crm_gocardless_id,
 			crm_zen_user_id
 		) values(?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(crm_id) 
+		DO UPDATE SET 
+		    crm_name=excluded.crm_name,
+		    crm_email=excluded.crm_email,
+		    crm_premise_address=excluded.crm_premise_address,
+		    crm_stage_name=excluded.crm_stage_name,
+		    crm_gocardless_id=excluded.crm_gocardless_id,
+		    crm_zen_user_id=excluded.crm_zen_user_id
 		`
 		commandSQL := prepareSQL("insert into crmAccounts", SQLInsertCRMAccountsDB, db)
 
